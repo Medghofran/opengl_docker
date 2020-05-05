@@ -1,3 +1,4 @@
+#include "shader.hpp"
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GL/glew.h>
@@ -102,6 +103,8 @@ bool init_dpy() {
 
 // draw params
 GLuint fb, color, depth;
+shader *s = nullptr;
+unsigned int vbo, vao;
 float const light_dir[] = {1, 1, 1, 0};
 float const light_color[] = {1, 0.95, 0.9, 1};
 
@@ -122,6 +125,49 @@ void init() {
   // create the render buffer
   glGenRenderbuffers(1, &depth);
   glBindRenderbuffer(GL_RENDERBUFFER, depth);
+
+  // create shaders
+  std::string _vertsrc = "#version 130\n"
+                         "in vec3 aPos;"
+                         "in vec3 aColor;"
+                         "out vec3 ourColor;"
+                         "void main() {"
+                         " gl_Position = vec4(aPos, 1.0);"
+                         " ourColor = aColor;"
+                         "}";
+  std::string _fragsrc = "#version 130\n"
+                         "in vec3 ourColor;"
+                         "out vec4 FragColor;"
+                         "void main() {"
+                         " FragColor = vec4(ourColor, 1.0f);"
+                         "}";
+
+  s = new shader(_vertsrc, _fragsrc);
+
+  // create buffers
+  float vertices[] = {
+      // positions         // colors
+      0.5f,  -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, // bottom right
+      -0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, // bottom left
+      0.0f,  0.5f,  0.0f, 0.0f, 0.0f, 1.0f  // top
+  };
+
+  glGenVertexArrays(1, &vao);
+  glGenBuffers(1, &vbo);
+  // bind the Vertex Array Object first, then bind and set vertex buffer(s), and
+  // then configure vertex attributes(s).
+  glBindVertexArray(vao);
+
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+  // position attribute
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
+  glEnableVertexAttribArray(0);
+  // color attribute
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
+                        (void *)(3 * sizeof(float)));
+  glEnableVertexAttribArray(1);
 }
 
 void draw() {
@@ -130,20 +176,14 @@ void draw() {
   glBindTexture(GL_TEXTURE_2D, color);
 
   glViewport(0, 0, pbufferWidth, pbufferHeight);
-
-  std::cout << "testing shader creation" << std::endl;
-  unsigned int _gShader = glCreateShader(GL_VERTEX_SHADER);
-  std::cout << "shader id " << _gShader << std::endl;
-
-  glBegin(GL_POINTS);
-  glVertex3d(0.5, 0.5, 0.0);
-  glVertex3d(-0.5, 0.5, 0.0);
-  glVertex3d(0.5, -0.5, 0.0);
-  glVertex3d(-0.5, -0.5, 0.0);
-  glEnd();
-
   glClearColor(0.2, 0.8, 1, 1);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+  // render the triangle
+  glBindTexture(GL_TEXTURE_2D, color);
+  s->use();
+  glBindVertexArray(vao);
+  glDrawArrays(GL_TRIANGLES, 0, 3);
 
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glEnable(GL_TEXTURE_2D);
@@ -193,6 +233,8 @@ int main(int argc, char *argv[]) {
 
   // read scene
   glBindFramebuffer(GL_READ_FRAMEBUFFER, fb);
+  std::cout << "done drawing frame" << std::endl;
+  delete s;
 
   // save the output to an image
   constexpr int _SIZE = 400 * 400 * 3;
